@@ -15,8 +15,8 @@
 #define MAX_CLIENTS 100
 #define MAX_LEN 1500
 #define connect_format "New client %s connected from %s : %d\n"
-#define exit_format "Client %s disconnected\n"
-#define allready_connected_format "Client %s already connected\n"
+#define exit_format "Client %s disconnected.\n"
+#define allready_connected_format "Client %s already connected.\n"
 
 /**
  * Structura pentru un mesaj primit de un server 

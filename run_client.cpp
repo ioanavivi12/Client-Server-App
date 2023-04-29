@@ -1,6 +1,8 @@
 #include "headers.h"
 
 char exit_from_server[50] = "exit";
+char subscribe[50] = "subscribe";
+char unsubscribe[50] = "unsubscribe";
 
 int run_client(int tcpfd, char *id) {
   struct pollfd poll_fds[2];
@@ -29,17 +31,17 @@ int run_client(int tcpfd, char *id) {
             send_all(tcpfd, &msg, sizeof(message));
             return 0;
           }
+          else if(strncmp(buffer, "subscribe", 9) == 0) {
+            char *topic = strtok(buffer, " ");
+            topic = strtok(NULL, " ");
+            int sf = atoi(strtok(NULL, " "));
+            message msg = create_message(subscribe, sf, topic);
+            send_all(tcpfd, &msg, sizeof(message));
+            printf("Subscribed to topic.\n");
+          }
         }
         else if(poll_fds[i].fd == tcpfd) {
-          int rc = recv(tcpfd, buffer, MAX_LEN, 0);
-          if(rc < 0) {
-            fprintf(stderr, "Error receiving message\n");
-            return 0;
-          }
-          else if(rc == 0) {
-            return 0;
-          }
-          printf("%s\n", buffer);
+          continue;
         }
       }
     }

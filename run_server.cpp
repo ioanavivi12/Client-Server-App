@@ -19,6 +19,12 @@ int run_all_clients(int tcpfd, int udpfd) {
     std::vector<struct pollfd> fds;
     std::vector<struct sockaddr_in> client_addr;
     std::map<char *, int> client_id;
+   
+    // pentru fiecare topic pastram mesajele primite
+    std::vector<std::vector<char *>> messages_from_topics;
+
+    //mapam id ul fiecarui client cu un vector de 4 elemente (cele 4 topicuri)
+    std::map<char *, std::vector<std::pair <int, int>>> client_topics;
     
     fds.push_back({tcpfd, POLLIN, 0});
     client_addr.push_back({});
@@ -106,7 +112,7 @@ int run_all_clients(int tcpfd, int udpfd) {
                         continue;
                     }
 
-                    if(strstr(msg.topic, "connect")) {
+                    if(strncmp(msg.topic, "connect", 7) == 0) {
                         bool found = check_if_client_exists(client_id, msg.payload, fds[i].fd);
                         if(!found) {
                             printf(connect_format, msg.payload, inet_ntoa(client_addr[i].sin_addr), 
@@ -125,12 +131,20 @@ int run_all_clients(int tcpfd, int udpfd) {
                             continue;
                         }
                     }
-                    else if(strstr(msg.topic, "exit")) 
+                    else if(strncmp(msg.topic, "exit", 4) == 0) 
                         printf(exit_format, msg.payload);
+                    else if(strncmp(msg.topic, "subscribe", 9) == 0) {
+                        // TODO: Trebuie sa iau caut in lista mea de topic in care ar exista unul cu mesajul din msg.payload
+                        // si sa mapez clientului sf ul pentru topicul respectiv
+                        int8_t sf = msg.type;
+                        char *topic = msg.payload;
+
+                    }
+            
                 }
             }
-        }
 
+        }
     }
     
 }
