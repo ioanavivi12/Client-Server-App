@@ -2,7 +2,7 @@
 
 using namespace std;
 
-bool my_bind(int fd, uint16_t port, bool naggle = false) {
+bool my_bind(int fd, uint16_t port, bool naggle) {
     // Completăm in serv_addr adresa serverului, familia de adrese si portul
     // pentru conectare
     struct sockaddr_in serv_addr;
@@ -33,7 +33,7 @@ bool my_bind(int fd, uint16_t port, bool naggle = false) {
     // Asociem adresa serverului cu socketul creat folosind bind
     rc = bind(fd, (const struct sockaddr *)&serv_addr, sizeof(serv_addr));
     if(rc < 0) {
-        fprintf(stderr, "Error binding socket\n");
+        fprintf(stderr, "Error binding socket %d\n", naggle);
         return false;
     }
     return true;
@@ -70,7 +70,9 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    run_all_clients(tcpfd, udpfd);
+    run_server(tcpfd, udpfd);
+    close(tcpfd);
+    close(udpfd);
 
     return 0;
 }

@@ -1,4 +1,4 @@
-CFLAGS = -Wall -g -Werror -Wno-error=unused-variable
+CFLAGS = -Wall -Werror -Wno-error=unused-variable 
 CC = g++
 
 all: server subscriber
@@ -11,3 +11,4 @@ subscriber: client.cpp run_client.cpp common.cpp
 
 clean:
 	rm -f *.o server subscriber
+	echo "" > log.txt

@@ -421,6 +421,7 @@ def run_test_c1_restart(server):
   # generate one message for each topic
   print("Generating one message for each topic")
   run_udp_client()
+  
   sleep(1)
 
   # restart and check subscriber C1
@@ -653,6 +654,8 @@ def h2_test():
     if success:
       # restart C1 and check that it starts properly
       c1, success = run_test_c1_restart(server)
+      if not server.is_alive():
+        print("Error: server is still up");
 
       if success:
         # check that C1 doesn't receive anything from the server
