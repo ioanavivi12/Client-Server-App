@@ -69,3 +69,21 @@ void add_new_client(int fd, struct sockaddr_in cli_addr, int *num_clients, bool 
  * Intoare un iterator catre topicul respectiv
 */
 auto get_topic_iterator(char *topic);
+
+
+/**
+ * Verifica cati clienti are topicul inainte sa fie adaugat in vectorul de topicuri
+*/
+int has_subscribers(char *topic);
+
+/**
+ * Trimitem mesajul catre toti clientii abonati la topicul respectiv
+*/
+int send_new_messages(udp_message msg);
+
+
+/*
+ * Atunci cand un client se concteaza la server, ii trimit toate mesajele pe care le are de primit in timp ce a fost deconectat,
+ * cele cu sf = 1
+*/
+void try_to_send_messages(int fd);

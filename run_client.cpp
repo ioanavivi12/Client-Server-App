@@ -55,6 +55,8 @@ int run_client(int tcpfd, char *id) {
   poll_fds[1].fd = tcpfd;
   poll_fds[1].events = POLLIN;
 
+  int nr_messages = 1;
+
   while(1) {
     int rc = poll(poll_fds, 2, 0);
     if(rc < 0) {
@@ -64,22 +66,26 @@ int run_client(int tcpfd, char *id) {
 
     for(int i = 0; i < 2; i++) {
       if(poll_fds[i].revents & POLLIN) {
-
-        char buffer[sizeof(udp_message)];
+        char buffer[sizeof(udp_message) * nr_messages];
+        
         if(poll_fds[i].fd == STDIN_FILENO) {
           fgets(buffer, MAX_LEN, stdin);
 
           if(strncmp(buffer, "exit", 4) == 0) {
-            message msg = create_message(exit_from_server, 0, id);
-            send_all(tcpfd, &msg, sizeof(message));
             close(tcpfd);
             return 0;
           }
           else if(strncmp(buffer, "subscribe", 9) == 0) {
             char *topic = strtok(buffer, " ");
             topic = strtok(NULL, " ");
-            int sf = atoi(strtok(NULL, " "));
+            char *sf_str = strtok(NULL, " ");
+            
+            if(sf_str == NULL) {
+              printf("Invalid command.\n");
+              continue;
+            }
 
+            int sf = atoi(sf_str);
             message msg = create_message(subscribe, sf, topic);
             send_all(tcpfd, &msg, sizeof(message));
             
@@ -96,8 +102,8 @@ int run_client(int tcpfd, char *id) {
           }
         }
         else if(poll_fds[i].fd == tcpfd) {
-           rc = recv_all(tcpfd, buffer, sizeof(udp_message));
-            if(rc < 0) {
+           rc = recv_all(tcpfd, buffer, sizeof(udp_message) * nr_messages);
+           if(rc < 0) {
               fprintf(stderr, "Error receiving message from server\n");
               return 0;
             }
@@ -107,7 +113,16 @@ int run_client(int tcpfd, char *id) {
             }
             else {
               udp_message msg = *((udp_message *)buffer);
-              print_udp_message(msg);
+              if(msg.port_client_udp < 0) {
+                // urmeaza sa primesc mai multe mesaje lipite de la server
+                nr_messages = 0 - msg.port_client_udp;
+                continue;
+              }
+              for(int i = 0; i < nr_messages; i++) {
+                print_udp_message(msg);
+                msg = *((udp_message *)(buffer + sizeof(udp_message) * (i + 1)));
+              }
+              nr_messages = 1;
             }
         }
       }

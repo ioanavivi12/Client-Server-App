@@ -8,8 +8,8 @@ std::vector<struct sockaddr_in> client_addr;
 
 // pentru fiecare client mapam id ul cu fd ul
 std::map<char *, int> client_id;
- // pentru fiecare topic pastram mesajele primite
-std::map<std::pair <char*, int>, std::vector<char *>> topics;
+ // pentru fiecare pereche (topic, tip) pastram un vector de mesaje primite si cati clienti sunt abonati la acel topic
+std::map<std::pair <char*, int>, std::pair <std::vector<char *>, int>> topics;
 
 /* mapam id ul fiecarui client cu topicurile la care este abonat 
 (pentru fiecare topic pastram pozitia in vectorul de topicuri daca are sf = 1 si -1 daca are sf = 0)
@@ -25,14 +25,19 @@ void init_all_vectors() {
     }
     client_id.clear();
 
-    // for(auto it = topics.begin(); it != topics.end(); it++) {
-    //     free(it->first.first);
-    // }
+    for(auto it = topics.begin(); it != topics.end(); it++) {
+        for(auto it2 = it->second.first.begin(); it2 != it->second.first.end(); it2++)
+            free(*it2);
+
+        it->second.first.clear();
+    }
     topics.clear();
 
-    // for(auto it = client_topics.begin(); it != client_topics.end(); it++) {
-    //     free(it->first.first);
-    // }
+    for(auto it = client_topics.begin(); it != client_topics.end(); it++) {
+        for(auto it2 = it->second.begin(); it2 != it->second.end(); it2++)
+            free(it2->first);
+        it->second.clear();
+    }
     client_topics.clear();
 }
 
@@ -62,6 +67,17 @@ void close_current_socket(int *i, int *num_clients) {
     (*i)--;
 }
 
+int has_subscribers(char *topic) {
+    int nr = 0;
+    for(auto it = client_topics.begin(); it != client_topics.end(); it++) {
+        for(auto it2 = it->second.begin(); it2 != it->second.end(); it2++) {
+            if(strcmp(it2->first, topic) == 0) 
+                nr++;
+        }
+    }
+    return nr;
+}
+
 void add_new_message_to_topic(udp_message msg) {
     // cautam in lista de chei daca exista topicul
     bool found = false;
@@ -72,16 +88,22 @@ void add_new_message_to_topic(udp_message msg) {
         if(strcmp(it->first.first, msg.msg.topic) == 0 ){
             found = true;
 
-            it->second.push_back(payload);
+            it->second.first.push_back(payload);
+            it->second.second++;
             break;
         }
     }
     // daca nu exista topicul, il adaugam
     if(!found) {
+        int subscribed = has_subscribers(msg.msg.topic);
+        if(subscribed == 0) {
+            free(payload);
+            return;
+        }
         std::vector<char *> v;
         // alocam memorie pentru payload
         v.push_back(payload);
-        topics.insert({{((udp_message *)payload)->msg.topic, msg.msg.type}, v});
+        topics.insert({{((udp_message *)payload)->msg.topic, msg.msg.type}, {v, subscribed}});
     }
 }
 
@@ -146,16 +168,38 @@ void try_to_send_messages(int fd) {
             continue;
         }
         auto topic = get_topic_iterator(it2->first);
-        if(it2->second != (int)topic->second.size()) {
+        if(it2->second != (int)topic->second.first.size()) {
             // nu s-a trimis tot
-            for(; it2->second < (int)topic->second.size(); it2->second++) {
-                int rc = send_all(fd, topic->second[it2->second], sizeof(udp_message));
-                DIE(rc < 0, "send");
+            if((int)topic->second.first.size() - it2->second >= 2) {
+                // incercam sa unim mesajele
+                int nr_mesaje = (int)topic->second.first.size() - it2->second;
+                // construim un string cu toate mesajele
+                char buffer[sizeof(udp_message) * nr_mesaje];
+                memset(buffer, 0, sizeof(udp_message) * nr_mesaje);
+                for(; it2->second < (int)topic->second.first.size(); it2->second++) 
+                    memcpy(buffer + (it2->second - (int)topic->second.first.size() + nr_mesaje) * sizeof(udp_message),
+                           topic->second.first[it2->second], sizeof(udp_message));
+    
+                // trimitem un mesaj special pentru a ii spune clientului ca o sa primeasca mai multe mesaje unite
+                udp_message msg;
+                memset(&msg, 0, sizeof(udp_message));
+                msg.port_client_udp = 0 - nr_mesaje;
+
+                int rc = send_all(fd, &msg, sizeof(udp_message));
+                DIE(rc < 0, "sendto");
+                
+                rc = send_all(fd, buffer, sizeof(udp_message) * nr_mesaje);
+                DIE(rc < 0, "sendto");
             }
+            else {
+                send_all(fd, topic->second.first[it2->second++], sizeof(udp_message));
+            }
+            
         }
 
     }
 }
+
 
 int run_server(int tcpfd, int udpfd) {
     int rc = listen(tcpfd, MAX_CLIENTS);
@@ -213,10 +257,7 @@ int run_server(int tcpfd, int udpfd) {
                     // adaugam mesajul in lista de topicuri si il trimitem la toti clientii abonati la topicul respectiv
                     add_new_message_to_topic(udp_msg);
                     rc = send_new_messages(udp_msg);
-                    if(rc < 0) {
-                        fprintf(stderr, "Error sending message\n");
-                        return 0;
-                    }
+                    DIE(rc < 0, "sendto");
 
                 }
                 // verificam daca a primit un mesaj de la STDIN
@@ -242,11 +283,9 @@ int run_server(int tcpfd, int udpfd) {
                     memset(&msg, 0, sizeof(message));
 
                     int rc = recv_all(fds[i].fd, &msg, sizeof(message));
-                    if(rc < 0) {
-                        fprintf(stderr, "Error receiving message\n");
-                        return 0;
-                    }
-                    else if(rc == 0) {
+                    DIE(rc < 0, "Error recv");
+                    if(rc == 0) {
+                        printf(exit_format, get_id(fds[i].fd));
                         client_id[get_id(fds[i].fd)] = -1;
                         close_current_socket(&i, &num_clients);
                         continue;
@@ -273,9 +312,6 @@ int run_server(int tcpfd, int udpfd) {
                             continue;
                         }
                     }
-                    else if(strncmp(msg.topic, "exit", 4) == 0) {
-                        printf(exit_format, msg.payload);
-                    }
                     else if(strncmp(msg.topic, "subscribe", 9) == 0) {
                         int8_t sf = msg.type;
                         char *topic = (char *)malloc(strlen(msg.payload) + 1);
@@ -287,7 +323,7 @@ int run_server(int tcpfd, int udpfd) {
                         // adaugam clientului topicul la care este abonat
                         if(sf == 1) { 
                             if(get_topic_iterator(topic) != topics.end()) 
-                                client_topics[get_id(fds[i].fd)].push_back({topic, get_topic_iterator(topic)->second.size()});
+                                client_topics[get_id(fds[i].fd)].push_back({topic, get_topic_iterator(topic)->second.first.size()});
                             else 
                                 client_topics[get_id(fds[i].fd)].push_back({topic, 0});
                         }
@@ -304,6 +340,11 @@ int run_server(int tcpfd, int udpfd) {
                                 client_topics[get_id(fds[i].fd)].erase(it);
                                 break;
                             }
+                        }
+                        auto it = get_topic_iterator(topic);
+                        it->second.second--;
+                        if(it->second.second == 0) {
+                            topics.erase(it);
                         }
                     }
                 }
